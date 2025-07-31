@@ -10,11 +10,7 @@ app = Flask(__name__)
 app.secret_key = 'your-secret-key-here'
 
 # Complete CORS configuration
-CORS(app,
-     resources={r"/api/*": {"origins": "http://localhost:8080"}},
-     supports_credentials=True,
-     allow_headers=["Content-Type", "Authorization", "Access-Control-Allow-Credentials"],
-     methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"])
+CORS(app)
 
 # Handle preflight requests
 @app.before_request
