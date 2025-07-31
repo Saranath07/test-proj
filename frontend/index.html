@@ -1,0 +1,713 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quiz Master V2</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Vue 3 -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <!-- Axios for API calls -->
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <style>
+        .quiz-timer {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #dc3545;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 25px;
+            font-weight: bold;
+            z-index: 1000;
+        }
+        .question-card {
+            transition: all 0.3s ease;
+        }
+        .question-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        .navbar-brand {
+            font-weight: bold;
+            font-size: 1.5rem;
+        }
+        .card-header {
+            background: linear-gradient(45deg, #007bff, #0056b3);
+            color: white;
+        }
+        .btn-quiz {
+            margin: 5px;
+        }
+        .score-card {
+            border-left: 4px solid #28a745;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <!-- Navigation -->
+        <nav class="navbar navbar-expand-lg navbar-dark bg-primary mb-4">
+            <div class="container">
+                <a class="navbar-brand" href="#" @click="currentView = 'home'">🎓 Quiz Master V2</a>
+                <div class="navbar-nav ms-auto">
+                    <span v-if="user" class="navbar-text me-3">Welcome, {{ user.full_name }}!</span>
+                    <button v-if="user" @click="logout" class="btn btn-outline-light">Logout</button>
+                </div>
+            </div>
+        </nav>
+
+        <!-- Quiz Timer (when taking quiz) -->
+        <div v-if="quizTimer > 0" class="quiz-timer">
+            ⏰ Time Left: {{ formatTime(quizTimer) }}
+        </div>
+
+        <div class="container">
+            <!-- Login/Register View -->
+            <div v-if="!user" class="row justify-content-center">
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header">
+                            <ul class="nav nav-tabs card-header-tabs">
+                                <li class="nav-item">
+                                    <a class="nav-link" :class="{ active: authView === 'login' }" 
+                                       @click="authView = 'login'" href="#">Login</a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link" :class="{ active: authView === 'register' }" 
+                                       @click="authView = 'register'" href="#">Register</a>
+                                </li>
+                            </ul>
+                        </div>
+                        <div class="card-body">
+                            <!-- Login Form -->
+                            <form v-if="authView === 'login'" @submit.prevent="login">
+                                <div class="mb-3">
+                                    <label class="form-label">Username/Email</label>
+                                    <input type="email" class="form-control" v-model="loginForm.username" required>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Password</label>
+                                    <input type="password" class="form-control" v-model="loginForm.password" required>
+                                </div>
+                                <button type="submit" class="btn btn-primary w-100">Login</button>
+                                <hr>
+                                <small class="text-muted">Admin Login: admin@quizmaster.com / admin123</small>
+                            </form>
+
+                            <!-- Register Form -->
+                            <form v-if="authView === 'register'" @submit.prevent="register">
+                                <div class="mb-3">
+                                    <label class="form-label">Email</label>
+                                    <input type="email" class="form-control" v-model="registerForm.username" required>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Password</label>
+                                    <input type="password" class="form-control" v-model="registerForm.password" required>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Full Name</label>
+                                    <input type="text" class="form-control" v-model="registerForm.full_name" required>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Qualification</label>
+                                    <input type="text" class="form-control" v-model="registerForm.qualification">
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Date of Birth</label>
+                                    <input type="date" class="form-control" v-model="registerForm.dob">
+                                </div>
+                                <button type="submit" class="btn btn-success w-100">Register</button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Main Application Views -->
+            <div v-if="user">
+                <!-- Admin Dashboard -->
+                <div v-if="user.role === 'admin'">
+                    <div class="row mb-4">
+                        <div class="col">
+                            <h2>Admin Dashboard</h2>
+                            <div class="btn-group mb-3">
+                                <button @click="adminView = 'subjects'" class="btn btn-primary" 
+                                        :class="{ active: adminView === 'subjects' }">Manage Subjects</button>
+                                <button @click="adminView = 'chapters'" class="btn btn-primary"
+                                        :class="{ active: adminView === 'chapters' }">Manage Chapters</button>
+                                <button @click="adminView = 'quizzes'" class="btn btn-primary"
+                                        :class="{ active: adminView === 'quizzes' }">Manage Quizzes</button>
+                                <button @click="adminView = 'questions'" class="btn btn-primary"
+                                        :class="{ active: adminView === 'questions' }">Manage Questions</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Manage Subjects -->
+                    <div v-if="adminView === 'subjects'">
+                        <div class="card mb-4">
+                            <div class="card-header">Add New Subject</div>
+                            <div class="card-body">
+                                <form @submit.prevent="createSubject">
+                                    <div class="row">
+                                        <div class="col-md-6">
+                                            <input type="text" class="form-control" placeholder="Subject Name" 
+                                                   v-model="newSubject.name" required>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <input type="text" class="form-control" placeholder="Description" 
+                                                   v-model="newSubject.description">
+                                        </div>
+                                        <div class="col-md-2">
+                                            <button type="submit" class="btn btn-success">Add Subject</button>
+                                        </div>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                        
+                        <div class="row">
+                            <div v-for="subject in subjects" :key="subject.id" class="col-md-4 mb-3">
+                                <div class="card">
+                                    <div class="card-body">
+                                        <h5 class="card-title">{{ subject.name }}</h5>
+                                        <p class="card-text">{{ subject.description }}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Manage Chapters -->
+                    <div v-if="adminView === 'chapters'">
+                        <div class="card mb-4">
+                            <div class="card-header">Add New Chapter</div>
+                            <div class="card-body">
+                                <form @submit.prevent="createChapter">
+                                    <div class="row">
+                                        <div class="col-md-3">
+                                            <select class="form-control" v-model="newChapter.subject_id" required>
+                                                <option value="">Select Subject</option>
+                                                <option v-for="subject in subjects" :key="subject.id" :value="subject.id">
+                                                    {{ subject.name }}
+                                                </option>
+                                            </select>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <input type="text" class="form-control" placeholder="Chapter Name" 
+                                                   v-model="newChapter.name" required>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <input type="text" class="form-control" placeholder="Description" 
+                                                   v-model="newChapter.description">
+                                        </div>
+                                        <div class="col-md-2">
+                                            <button type="submit" class="btn btn-success">Add Chapter</button>
+                                        </div>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+
+                        <div v-for="subject in subjects" :key="subject.id" class="mb-4">
+                            <h4>{{ subject.name }} - Chapters</h4>
+                            <div class="row">
+                                <div v-for="chapter in getChaptersBySubject(subject.id)" :key="chapter.id" class="col-md-4 mb-3">
+                                    <div class="card">
+                                        <div class="card-body">
+                                            <h6 class="card-title">{{ chapter.name }}</h6>
+                                            <p class="card-text">{{ chapter.description }}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Manage Quizzes -->
+                    <div v-if="adminView === 'quizzes'">
+                        <div class="card mb-4">
+                            <div class="card-header">Add New Quiz</div>
+                            <div class="card-body">
+                                <form @submit.prevent="createQuiz">
+                                    <div class="row mb-3">
+                                        <div class="col-md-3">
+                                            <select class="form-control" v-model="selectedSubjectForChapter" @change="loadChapters">
+                                                <option value="">Select Subject</option>
+                                                <option v-for="subject in subjects" :key="subject.id" :value="subject.id">
+                                                    {{ subject.name }}
+                                                </option>
+                                            </select>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <select class="form-control" v-model="newQuiz.chapter_id" required>
+                                                <option value="">Select Chapter</option>
+                                                <option v-for="chapter in availableChapters" :key="chapter.id" :value="chapter.id">
+                                                    {{ chapter.name }}
+                                                </option>
+                                            </select>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <input type="text" class="form-control" placeholder="Quiz Name" 
+                                                   v-model="newQuiz.name" required>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <input type="number" class="form-control" placeholder="Duration (minutes)" 
+                                                   v-model="newQuiz.time_duration" min="1">
+                                        </div>
+                                    </div>
+                                    <div class="row">
+                                        <div class="col-md-8">
+                                            <input type="text" class="form-control" placeholder="Remarks" 
+                                                   v-model="newQuiz.remarks">
+                                        </div>
+                                        <div class="col-md-4">
+                                            <button type="submit" class="btn btn-success w-100">Create Quiz</button>
+                                        </div>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+
+                        <div v-for="chapter in chapters" :key="chapter.id" class="mb-4">
+                            <h5>{{ getSubjectName(chapter.subject_id) }} > {{ chapter.name }}</h5>
+                            <div class="row">
+                                <div v-for="quiz in getQuizzesByChapter(chapter.id)" :key="quiz.id" class="col-md-4 mb-3">
+                                    <div class="card">
+                                        <div class="card-body">
+                                            <h6 class="card-title">{{ quiz.name }}</h6>
+                                            <p class="card-text">
+                                                Duration: {{ quiz.time_duration }} minutes<br>
+                                                <small>{{ quiz.remarks }}</small>
+                                            </p>
+                                            <button @click="selectQuizForQuestions(quiz)" class="btn btn-sm btn-primary">
+                                                Add Questions
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Manage Questions -->
+                    <div v-if="adminView === 'questions'">
+                        <div v-if="selectedQuiz" class="card mb-4">
+                            <div class="card-header">Add Question to: {{ selectedQuiz.name }}</div>
+                            <div class="card-body">
+                                <form @submit.prevent="createQuestion">
+                                    <div class="mb-3">
+                                        <label class="form-label">Question Statement</label>
+                                        <textarea class="form-control" rows="3" v-model="newQuestion.question_statement" required></textarea>
+                                    </div>
+                                    <div class="row mb-3">
+                                        <div class="col-md-6">
+                                            <label class="form-label">Option 1</label>
+                                            <input type="text" class="form-control" v-model="newQuestion.option1" required>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label">Option 2</label>
+                                            <input type="text" class="form-control" v-model="newQuestion.option2" required>
+                                        </div>
+                                    </div>
+                                    <div class="row mb-3">
+                                        <div class="col-md-6">
+                                            <label class="form-label">Option 3</label>
+                                            <input type="text" class="form-control" v-model="newQuestion.option3" required>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label">Option 4</label>
+                                            <input type="text" class="form-control" v-model="newQuestion.option4" required>
+                                        </div>
+                                    </div>
+                                    <div class="row mb-3">
+                                        <div class="col-md-6">
+                                            <label class="form-label">Correct Option</label>
+                                            <select class="form-control" v-model="newQuestion.correct_option" required>
+                                                <option value="1">Option 1</option>
+                                                <option value="2">Option 2</option>
+                                                <option value="3">Option 3</option>
+                                                <option value="4">Option 4</option>
+                                            </select>
+                                        </div>
+                                        <div class="col-md-6 d-flex align-items-end">
+                                            <button type="submit" class="btn btn-success w-100">Add Question</button>
+                                        </div>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+
+                        <div class="alert alert-info" v-if="!selectedQuiz">
+                            Please select a quiz from the Manage Quizzes section to add questions.
+                        </div>
+                    </div>
+                </div>
+
+                <!-- User Dashboard -->
+                <div v-if="user.role === 'user'">
+                    <!-- Taking Quiz View -->
+                    <div v-if="currentView === 'taking-quiz'">
+                        <div class="card">
+                            <div class="card-header">
+                                <h4>{{ activeQuiz.quiz.name }}</h4>
+                                <small>Question {{ currentQuestionIndex + 1 }} of {{ activeQuiz.questions.length }}</small>
+                            </div>
+                            <div class="card-body">
+                                <div v-if="currentQuestionIndex < activeQuiz.questions.length">
+                                    <div class="question-card card mb-4">
+                                        <div class="card-body">
+                                            <h5>{{ activeQuiz.questions[currentQuestionIndex].question_statement }}</h5>
+                                            <div class="mt-3">
+                                                <div class="form-check mb-2" v-for="i in 4" :key="i">
+                                                    <input class="form-check-input" type="radio" 
+                                                           :name="'question_' + activeQuiz.questions[currentQuestionIndex].id"
+                                                           :id="'option_' + i"
+                                                           :value="i"
+                                                           v-model="quizAnswers[activeQuiz.questions[currentQuestionIndex].id]">
+                                                    <label class="form-check-label" :for="'option_' + i">
+                                                        {{ activeQuiz.questions[currentQuestionIndex]['option' + i] }}
+                                                    </label>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="d-flex justify-content-between">
+                                        <button @click="previousQuestion" class="btn btn-secondary" 
+                                                :disabled="currentQuestionIndex === 0">Previous</button>
+                                        <button v-if="currentQuestionIndex < activeQuiz.questions.length - 1" 
+                                                @click="nextQuestion" class="btn btn-primary">Next</button>
+                                        <button v-else @click="submitQuiz" class="btn btn-success">Submit Quiz</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Quiz Results View -->
+                    <div v-if="currentView === 'quiz-results'">
+                        <div class="card text-center">
+                            <div class="card-body">
+                                <h2 class="text-success">Quiz Completed!</h2>
+                                <h3>Your Score: {{ quizResult.score }} / {{ quizResult.total }}</h3>
+                                <h4>Percentage: {{ quizResult.percentage.toFixed(1) }}%</h4>
+                                <div class="progress mb-3">
+                                    <div class="progress-bar" :style="`width: ${quizResult.percentage}%`"></div>
+                                </div>
+                                <button @click="currentView = 'home'" class="btn btn-primary">Back to Dashboard</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- User Home Dashboard -->
+                    <div v-if="currentView === 'home'">
+                        <div class="row mb-4">
+                            <div class="col">
+                                <h2>User Dashboard</h2>
+                                <div class="btn-group mb-3">
+                                    <button @click="userView = 'subjects'" class="btn btn-outline-primary" 
+                                            :class="{ active: userView === 'subjects' }">Take Quiz</button>
+                                    <button @click="userView = 'scores'; loadUserScores()" class="btn btn-outline-primary"
+                                            :class="{ active: userView === 'scores' }">My Scores</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Browse Subjects/Quizzes -->
+                        <div v-if="userView === 'subjects'">
+                            <div v-for="subject in subjects" :key="subject.id" class="mb-4">
+                                <h4>{{ subject.name }}</h4>
+                                <p class="text-muted">{{ subject.description }}</p>
+                                <div class="row">
+                                    <div v-for="chapter in getChaptersBySubject(subject.id)" :key="chapter.id" class="col-md-6 mb-3">
+                                        <div class="card">
+                                            <div class="card-body">
+                                                <h6 class="card-title">{{ chapter.name }}</h6>
+                                                <p class="card-text">{{ chapter.description }}</p>
+                                                <div v-for="quiz in getQuizzesByChapter(chapter.id)" :key="quiz.id" class="mb-2">
+                                                    <button @click="startQuiz(quiz.id)" class="btn btn-primary btn-quiz btn-sm">
+                                                        📝 {{ quiz.name }} ({{ quiz.time_duration }} min)
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- User Scores -->
+                        <div v-if="userView === 'scores'">
+                            <h4>My Quiz History</h4>
+                            <div v-if="userScores.length === 0" class="alert alert-info">
+                                No quiz attempts yet. Start taking quizzes to see your scores here!
+                            </div>
+                            <div v-for="score in userScores" :key="score.id" class="card score-card mb-3">
+                                <div class="card-body">
+                                    <div class="row">
+                                        <div class="col-md-8">
+                                            <h6 class="card-title">{{ score.quiz_name }}</h6>
+                                            <p class="card-text">
+                                                <small class="text-muted">
+                                                    {{ score.subject_name }} > {{ score.chapter_name }}
+                                                </small>
+                                            </p>
+                                        </div>
+                                        <div class="col-md-4 text-end">
+                                            <h5 class="text-success">{{ score.total_scored }}/{{ score.total_questions }}</h5>
+                                            <small class="text-muted">{{ new Date(score.time_stamp).toLocaleDateString() }}</small>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Alert messages -->
+        <div v-if="alert.message" class="alert" :class="`alert-${alert.type}`" 
+             style="position: fixed; top: 80px; right: 20px; z-index: 1050; min-width: 300px;">
+            {{ alert.message }}
+            <button @click="alert.message = ''" class="btn-close float-end"></button>
+        </div>
+    </div>
+
+    <script>
+        const { createApp } = Vue;
+        
+        createApp({
+            data() {
+                return {
+                    user: null,
+                    authView: 'login',
+                    currentView: 'home',
+                    adminView: 'subjects',
+                    userView: 'subjects',
+                    
+                    loginForm: { username: '', password: '' },
+                    registerForm: { username: '', password: '', full_name: '', qualification: '', dob: '' },
+                    
+                    subjects: [],
+                    chapters: [],
+                    quizzes: [],
+                    availableChapters: [],
+                    selectedSubjectForChapter: '',
+                    
+                    newSubject: { name: '', description: '' },
+                    newChapter: { subject_id: '', name: '', description: '' },
+                    newQuiz: { chapter_id: '', name: '', time_duration: 30, remarks: '' },
+                    newQuestion: { 
+                        quiz_id: '', question_statement: '', option1: '', option2: '', 
+                        option3: '', option4: '', correct_option: 1 
+                    },
+                    
+                    selectedQuiz: null,
+                    activeQuiz: null,
+                    currentQuestionIndex: 0,
+                    quizAnswers: {},
+                    quizResult: null,
+                    quizTimer: 0,
+                    quizInterval: null,
+                    
+                    userScores: [],
+                    
+                    alert: { message: '', type: 'info' }
+                };
+            },
+            
+            mounted() {
+                this.loadSubjects();
+                this.loadChapters();
+                this.loadQuizzes();
+            },
+            
+            methods: {
+                async apiCall(url, method = 'GET', data = null) {
+                    try {
+                        const config = {
+                            method,
+                            url: `http://localhost:5001${url}`,
+                            withCredentials: true,
+                            headers: { 'Content-Type': 'application/json' }
+                        };
+                        if (data) config.data = data;
+                        
+                        const response = await axios(config);
+                        return response.data;
+                    } catch (error) {
+                        this.showAlert(error.response?.data?.message || error.message, 'danger');
+                        throw error;
+                    }
+                },
+                
+                showAlert(message, type = 'info') {
+                    this.alert = { message, type };
+                    setTimeout(() => this.alert.message = '', 5000);
+                },
+                
+                async login() {
+                    try {
+                        const result = await this.apiCall('/api/login', 'POST', this.loginForm);
+                        if (result.success) {
+                            this.user = result.user;
+                            this.showAlert('Login successful!', 'success');
+                        }
+                    } catch (error) {
+                        console.error('Login error:', error);
+                    }
+                },
+                
+                async register() {
+                    try {
+                        const result = await this.apiCall('/api/register', 'POST', this.registerForm);
+                        if (result.success) {
+                            this.showAlert('Registration successful! Please login.', 'success');
+                            this.authView = 'login';
+                            this.registerForm = { username: '', password: '', full_name: '', qualification: '', dob: '' };
+                        }
+                    } catch (error) {
+                        console.error('Register error:', error);
+                    }
+                },
+                
+                async logout() {
+                    await this.apiCall('/api/logout', 'POST');
+                    this.user = null;
+                    this.currentView = 'home';
+                    this.showAlert('Logged out successfully!', 'info');
+                },
+                
+                async loadSubjects() {
+                    this.subjects = await this.apiCall('/api/subjects');
+                },
+                
+                async loadChapters() {
+                    if (this.selectedSubjectForChapter) {
+                        this.availableChapters = await this.apiCall(`/api/subjects/${this.selectedSubjectForChapter}/chapters`);
+                    } else {
+                        this.chapters = [];
+                        for (const subject of this.subjects) {
+                            const subjectChapters = await this.apiCall(`/api/subjects/${subject.id}/chapters`);
+                            this.chapters.push(...subjectChapters);
+                        }
+                    }
+                },
+                
+                async loadQuizzes() {
+                    this.quizzes = [];
+                    for (const chapter of this.chapters) {
+                        const chapterQuizzes = await this.apiCall(`/api/chapters/${chapter.id}/quizzes`);
+                        this.quizzes.push(...chapterQuizzes);
+                    }
+                },
+                
+                async createSubject() {
+                    await this.apiCall('/api/subjects', 'POST', this.newSubject);
+                    this.showAlert('Subject created successfully!', 'success');
+                    this.newSubject = { name: '', description: '' };
+                    this.loadSubjects();
+                },
+                
+                async createChapter() {
+                    await this.apiCall('/api/chapters', 'POST', this.newChapter);
+                    this.showAlert('Chapter created successfully!', 'success');
+                    this.newChapter = { subject_id: '', name: '', description: '' };
+                    this.loadChapters();
+                },
+                
+                async createQuiz() {
+                    const result = await this.apiCall('/api/quizzes', 'POST', this.newQuiz);
+                    this.showAlert('Quiz created successfully!', 'success');
+                    this.newQuiz = { chapter_id: '', name: '', time_duration: 30, remarks: '' };
+                    this.loadQuizzes();
+                },
+                
+                async createQuestion() {
+                    this.newQuestion.quiz_id = this.selectedQuiz.id;
+                    await this.apiCall('/api/questions', 'POST', this.newQuestion);
+                    this.showAlert('Question added successfully!', 'success');
+                    this.newQuestion = { 
+                        quiz_id: '', question_statement: '', option1: '', option2: '', 
+                        option3: '', option4: '', correct_option: 1 
+                    };
+                },
+                
+                async startQuiz(quizId) {
+                    this.activeQuiz = await this.apiCall(`/api/quiz/${quizId}`);
+                    this.currentQuestionIndex = 0;
+                    this.quizAnswers = {};
+                    this.currentView = 'taking-quiz';
+                    
+                    // Start timer
+                    this.quizTimer = this.activeQuiz.quiz.time_duration * 60; // Convert to seconds
+                    this.quizInterval = setInterval(() => {
+                        this.quizTimer--;
+                        if (this.quizTimer <= 0) {
+                            this.submitQuiz();
+                        }
+                    }, 1000);
+                },
+                
+                async submitQuiz() {
+                    clearInterval(this.quizInterval);
+                    this.quizTimer = 0;
+                    
+                    this.quizResult = await this.apiCall(`/api/quiz/${this.activeQuiz.quiz.id}/submit`, 'POST', {
+                        answers: this.quizAnswers
+                    });
+                    
+                    this.currentView = 'quiz-results';
+                    this.showAlert(`Quiz submitted! Score: ${this.quizResult.score}/${this.quizResult.total}`, 'success');
+                },
+                
+                async loadUserScores() {
+                    this.userScores = await this.apiCall('/api/user/scores');
+                },
+                
+                nextQuestion() {
+                    if (this.currentQuestionIndex < this.activeQuiz.questions.length - 1) {
+                        this.currentQuestionIndex++;
+                    }
+                },
+                
+                previousQuestion() {
+                    if (this.currentQuestionIndex > 0) {
+                        this.currentQuestionIndex--;
+                    }
+                },
+                
+                selectQuizForQuestions(quiz) {
+                    this.selectedQuiz = quiz;
+                    this.adminView = 'questions';
+                },
+                
+                getChaptersBySubject(subjectId) {
+                    return this.chapters.filter(c => c.subject_id === subjectId);
+                },
+                
+                getQuizzesByChapter(chapterId) {
+                    return this.quizzes.filter(q => q.chapter_id === chapterId);
+                },
+                
+                getSubjectName(subjectId) {
+                    const subject = this.subjects.find(s => s.id === subjectId);
+                    return subject ? subject.name : '';
+                },
+                
+                formatTime(seconds) {
+                    const mins = Math.floor(seconds / 60);
+                    const secs = seconds % 60;
+                    return `${mins}:${secs.toString().padStart(2, '0')}`;
+                }
+            }
+        }).mount('#app');
+    </script>
+    
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
